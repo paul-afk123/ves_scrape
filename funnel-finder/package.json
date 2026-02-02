@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "npx playwright install --with-deps chromium"
+    "postinstall": "node -e \"if (!process.env.VERCEL) require('child_process').execSync('npx playwright install --with-deps chromium', { stdio: 'inherit' })\""
   },
   "dependencies": {
     "cheerio": "^1.0.0",

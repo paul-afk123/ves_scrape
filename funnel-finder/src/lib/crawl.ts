@@ -183,10 +183,17 @@ function scorePage(url: string, html: string): { score: number; reasons: string[
 }
 
 let _browser: Browser | null = null;
-async function getBrowser(): Promise<Browser> {
+let _browserFailed = false;
+async function getBrowser(): Promise<Browser | null> {
   if (_browser) return _browser;
-  _browser = await chromium.launch({ headless: true });
-  return _browser;
+  if (_browserFailed) return null;
+  try {
+    _browser = await chromium.launch({ headless: true });
+    return _browser;
+  } catch {
+    _browserFailed = true;
+    return null;
+  }
 }
 
 const DEFAULT_HEADERS: HeadersInit = {
@@ -225,8 +232,9 @@ async function fetchHtmlWithFallback(url: string, headers: HeadersInit): Promise
     }
   } catch {}
 
-  // Fallback to Playwright for JS-heavy pages
+  // Fallback to Playwright for JS-heavy pages (skipped on Vercel / when Chromium not installed)
   const browser = await getBrowser();
+  if (!browser) return { html: "", used: "fetch" };
   const page = await browser.newPage();
   try {
     await page.setExtraHTTPHeaders(headers as Record<string, string>);
@@ -519,16 +527,29 @@ export async function previewSite(url: string) {
   const headers = DEFAULT_HEADERS;
 
   const browser = await getBrowser();
-  const page = await browser.newPage();
-  try {
-    await page.setExtraHTTPHeaders(headers as Record<string, string>);
-    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
-    const finalUrl = page.url();
-    const title = await page.title();
+  if (browser) {
+    const page = await browser.newPage();
+    try {
+      await page.setExtraHTTPHeaders(headers as Record<string, string>);
+      await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+      const finalUrl = page.url();
+      const title = await page.title();
+      const buf = await page.screenshot({ fullPage: false });
+      return { finalUrl, title, screenshotBase64: buf.toString("base64") };
+    } finally {
+      await page.close();
+    }
+  }
 
-    const buf = await page.screenshot({ fullPage: false });
-    return { finalUrl, title, screenshotBase64: buf.toString("base64") };
-  } finally {
-    await page.close();
+  // No browser (e.g. Vercel): use fetch for finalUrl + title only, no screenshot
+  try {
+    const res = await fetch(baseUrl, { redirect: "follow", headers });
+    const finalUrl = res.url || baseUrl;
+    const html = res.ok ? await res.text() : "";
+    const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : "";
+    return { finalUrl, title, screenshotBase64: undefined };
+  } catch {
+    return { finalUrl: baseUrl, title: "", screenshotBase64: undefined };
   }
 }
