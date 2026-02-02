@@ -1,0 +1,14 @@
+# Dependencies and build
+funnel-finder/node_modules/
+funnel-finder/.next/
+funnel-finder/out/
+funnel-finder/build/
+
+# Misc
+.DS_Store
+*.log
+.env*.local
+
+# IDE
+.vscode/
+!.vscode/extensions.json
